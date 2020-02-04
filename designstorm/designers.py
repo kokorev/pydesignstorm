@@ -143,12 +143,12 @@ class ERA5CorrectorShape(ERA5ReaderShape):
         self.bc_obj = {key: None for key in self.shp_names}
 
     @lru_cache(maxsize=None)
-    def get_obs(self, shape_name):
+    def get_obs_in_shape(self, shape_name):
         return self.obs[self.st_ind_per_poly[shape_name]]
 
-    def get_bc_obj(self, shape_name):
+    def get_bc_obj_in_shape(self, shape_name):
         if self.bc_obj[shape_name] is None:
-            obs = self.get_obs(shape_name)
+            obs = self.get_obs_in_shape(shape_name)
             era = super().get_era_in_shape(shape_name)
             bc = BiasCorrectorHourly(obs, era, distribution=self.distr_name)
             self.bc_obj[shape_name] = bc
@@ -161,7 +161,7 @@ class ERA5CorrectorShape(ERA5ReaderShape):
         :param shape_name: name of the shape as specified in provided shape file
         :return: pandas.DataFrame
         """
-        bc_obj = self.get_bc_obj(shape_name)
+        bc_obj = self.get_bc_obj_in_shape(shape_name)
         return bc_obj[:, :]
 
 
@@ -180,15 +180,15 @@ class ERA5CorrectedCells(ERA5Reader):
         self.n_lons = self.lons.shape[0]
         self.bc_obj = {k: None for k in self.obs.columns}
 
-    def get_obs(self, ilat, ilon):
+    def get_obs_in_cell(self, ilat, ilon):
         st_ind = self.closest_st_map[ilat, ilon]
         obs = self.obs[st_ind]
         return obs
 
-    def get_bc_obj(self, ilat, ilon):
+    def get_bc_obj_in_cell(self, ilat, ilon):
         st_ind = self.closest_st_map[ilat, ilon]
         if self.bc_obj[st_ind] is None:
-            obs = self.get_obs(ilat, ilon)
+            obs = self.get_obs_in_cell(ilat, ilon)
             era_inds = np.argwhere(self.closest_st_map == st_ind)
             lst = [pd.Series(self.var[:, ilat, ilon], index=self.dti) for ilat, ilon in era_inds]
             era = pd.DataFrame(lst).transpose()
@@ -208,14 +208,14 @@ class ERA5CorrectedCells(ERA5Reader):
         st_ind = self.closest_st_map[ilat, ilon]
         inds = np.argwhere(self.closest_st_map == st_ind)
         col_ind = np.argwhere((inds == [ilat, ilon]).all(axis=1))[0][0]
-        bc = self.get_bc_obj(ilat, ilon)
+        bc = self.get_bc_obj_in_cell(ilat, ilon)
         return bc[:, col_ind]
 
     def get_cell_ind_iterator(self):
         return itertools.product(np.arange(self.n_lats), np.arange(self.n_lons))
 
 
-class StormDesignerCorrectedERA5(ERA5CorrectorShape):
+class StormDesignerCorrectedERA5(ERA5CorrectorShape, ERA5CorrectedCells):
     """
     high level class for design storm functions using per shape bias correction
     """
@@ -251,7 +251,7 @@ class StormDesignerCorrectedERA5(ERA5CorrectorShape):
         design_storm = get_events_average(era, dates, self.days_before, self.days_after)
         return design_storm
 
-    def get_rp_map(self, rp):
+    def get_rp_map_shape(self, rp):
         """
         return map of return period values where return periods calculated per shape
         :param rp: return period in years
@@ -265,6 +265,23 @@ class StormDesignerCorrectedERA5(ERA5CorrectorShape):
             rp_f = self.get_rp_f_in_shape(shape_name)
             rp_val = rp_f(rp)
             rp_map[lat_inds, lon_inds] = rp_val
+        return rp_map
+
+    def get_rp_map_cell(self, rp):
+        """
+        return map of return period values calculated per cell independently
+        :param rp:
+        :return:
+        """
+        rp_map = np.empty((self.var.shape[1], self.var.shape[2]))
+        rp_map[:, :] = np.nan
+        for ilat, ilon in self.get_cell_ind_iterator():
+            try:
+                rp_f = self.get_rp_f_cell(ilat, ilon)
+                rp_val = rp_f(rp)
+            except TypeError:
+                rp_val = -1
+            rp_map[ilat, ilon] = rp_val
         return rp_map
 
     def get_scaled_max_map(self, rp):

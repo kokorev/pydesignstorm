@@ -215,7 +215,7 @@ class ERA5CorrectedCells(ERA5Reader):
         return itertools.product(np.arange(self.n_lats), np.arange(self.n_lons))
 
 
-class StormDesignerCorrectedERA5(ERA5CorrectorShape, ERA5CorrectedCells):
+class StormDesignerCorrectedERA5(ERA5CorrectorShape):
     """
     high level class for design storm functions using per shape bias correction
     """

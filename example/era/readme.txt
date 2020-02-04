@@ -1,0 +1,1 @@
+For this example you can download TJ data from https://www.dropbox.com/s/ql0wjkg0fobq0q5/TJ_prec_1979-2018.7z?dl=1
